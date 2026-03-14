@@ -13,10 +13,10 @@ spec:
       default: main
     - name: image
       type: string
-      default: ttl.sh/aplikacja-frontend
+      default: quay.io/apoczeka/aplikacja-frontend
     - name: image-tag
       type: string
-      default: "1h"
+      default: "latest"
   workspaces:
     - name: source
   tasks:
