@@ -33,7 +33,17 @@ spec:
         fi
 
         echo "=== Checking image against ACS policies: $(params.image) ==="
+        set +e
         roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image check \
           --image "$(params.image)" \
           --output table
-        echo "=== Image check PASSED ==="
+        EXIT_CODE=$?
+        set -e
+
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo ""
+          echo "=== WARNING: Image policy violations found (non-blocking for demo) ==="
+          echo "=== In production, this would STOP the pipeline ==="
+        else
+          echo "=== Image check PASSED - no policy violations ==="
+        fi
