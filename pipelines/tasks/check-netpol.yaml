@@ -66,6 +66,7 @@ spec:
         echo ""
         echo "=== Pushing to new branch ==="
         cd $(workspaces.source.path)
+        git config --global --add safe.directory $(workspaces.source.path)
 
         git config user.email "$(params.git-user-email)"
         git config user.name "$(params.git-user-name)"
