@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: roxctl-deployment-check
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: manifest-dir
+      type: string
+      default: k8s
+    - name: acs-central-endpoint
+      type: string
+    - name: insecure
+      type: string
+      default: "true"
+  workspaces:
+    - name: source
+  steps:
+    - name: deployment-check
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: acs-api-token
+              key: token
+      script: |
+        #!/bin/bash
+        set -e
+        curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
+        chmod +x /usr/local/bin/roxctl
+
+        INSECURE_FLAG=""
+        if [ "$(params.insecure)" = "true" ]; then
+          INSECURE_FLAG="--insecure-skip-tls-verify"
+        fi
+
+        MANIFEST_DIR=$(workspaces.source.path)/$(params.manifest-dir)
+        echo "=== Checking deployments in ${MANIFEST_DIR} ==="
+
+        FAILED=0
+        for f in ${MANIFEST_DIR}/*deployment*.yaml; do
+          if [ -f "$f" ]; then
+            echo "--- Checking: $(basename $f) ---"
+            roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG deployment check \
+              --file "$f" \
+              --output table || FAILED=1
+          fi
+        done
+
+        if [ $FAILED -eq 1 ]; then
+          echo "=== Deployment check FAILED ==="
+          exit 1
+        fi
+        echo "=== Deployment check PASSED ==="

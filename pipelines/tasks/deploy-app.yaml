@@ -1,0 +1,36 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-app
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: manifest-dir
+      type: string
+      default: k8s
+    - name: namespace
+      type: string
+      default: aplikacja
+  workspaces:
+    - name: source
+  steps:
+    - name: deploy
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      script: |
+        #!/bin/bash
+        set -e
+
+        MANIFEST_DIR=$(workspaces.source.path)/$(params.manifest-dir)
+        echo "=== Deploying to namespace $(params.namespace) ==="
+
+        for f in ${MANIFEST_DIR}/*.yaml; do
+          echo "--- Applying: $(basename $f) ---"
+          oc apply -f "$f" -n $(params.namespace) 2>&1 || true
+        done
+
+        echo "=== Waiting for deployments to be ready ==="
+        oc rollout status deployment/db -n $(params.namespace) --timeout=120s || true
+        oc rollout status deployment/frontend -n $(params.namespace) --timeout=120s || true
+
+        echo "=== Deployment complete ==="
+        oc get pods -n $(params.namespace)

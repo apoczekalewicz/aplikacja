@@ -1,0 +1,97 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: check-netpol
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: manifest-dir
+      type: string
+      default: k8s
+    - name: git-url
+      type: string
+    - name: git-user-email
+      type: string
+      default: "pipeline@cicd.local"
+    - name: git-user-name
+      type: string
+      default: "CICD Pipeline"
+  results:
+    - name: netpol-status
+      description: "EXISTS or GENERATED"
+  workspaces:
+    - name: source
+  steps:
+    - name: check-and-generate
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: token
+      script: |
+        #!/bin/bash
+        set -e
+
+        microdnf install -y git tar gzip jq > /dev/null 2>&1
+
+        curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
+        chmod +x /usr/local/bin/roxctl
+
+        MANIFEST_DIR=$(workspaces.source.path)/$(params.manifest-dir)
+
+        echo "=== Checking for existing NetworkPolicy in ${MANIFEST_DIR} ==="
+        NETPOL_COUNT=$(grep -rl "kind: NetworkPolicy" ${MANIFEST_DIR}/ 2>/dev/null | wc -l)
+
+        if [ "$NETPOL_COUNT" -gt 0 ]; then
+          echo "Found $NETPOL_COUNT file(s) with NetworkPolicy."
+          echo "=== NetworkPolicy already exists ==="
+          echo -n "EXISTS" > $(results.netpol-status.path)
+          exit 0
+        fi
+
+        echo "=== No NetworkPolicy found. Generating... ==="
+        roxctl netpol generate "${MANIFEST_DIR}" -o "${MANIFEST_DIR}/generated-netpol.yaml" 2>&1 || true
+
+        if [ ! -f "${MANIFEST_DIR}/generated-netpol.yaml" ]; then
+          echo "WARNING: roxctl netpol generate did not produce output"
+          echo -n "FAILED" > $(results.netpol-status.path)
+          exit 1
+        fi
+
+        echo "=== Generated NetworkPolicy ==="
+        cat "${MANIFEST_DIR}/generated-netpol.yaml"
+
+        echo "=== Pushing to new branch ==="
+        cd $(workspaces.source.path)
+
+        git config user.email "$(params.git-user-email)"
+        git config user.name "$(params.git-user-name)"
+
+        BRANCH="netpol/auto-$(date +%Y%m%d-%H%M%S)"
+        git checkout -b "${BRANCH}"
+        git add $(params.manifest-dir)/generated-netpol.yaml
+        git commit -m "Auto-generated NetworkPolicy by CICD pipeline"
+
+        # Push with token auth
+        GIT_URL=$(echo "$(params.git-url)" | sed "s|https://|https://pipeline:${GIT_TOKEN}@|")
+        git push "${GIT_URL}" "${BRANCH}"
+
+        echo "=== Branch ${BRANCH} pushed ==="
+        echo "=== Please create a PR to merge NetworkPolicy ==="
+
+        # Create GitHub PR
+        REPO_PATH=$(echo "$(params.git-url)" | sed 's|https://github.com/||;s|\.git$||')
+        curl -s -X POST \
+          -H "Authorization: token ${GIT_TOKEN}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/${REPO_PATH}/pulls" \
+          -d "{
+            \"title\": \"Auto-generated NetworkPolicy\",
+            \"body\": \"NetworkPolicy wygenerowane automatycznie przez pipeline CICD.\\n\\nPrzejrzyj i zatwierdź.\",
+            \"head\": \"${BRANCH}\",
+            \"base\": \"main\"
+          }" | jq '.html_url' || echo "PR creation failed - please create manually"
+
+        echo -n "GENERATED" > $(results.netpol-status.path)

@@ -1,0 +1,126 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: aplikacja-deploy
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/apoczekalewicz/aplikacja.git
+    - name: git-revision
+      type: string
+      default: main
+    - name: image
+      type: string
+      default: ttl.sh/aplikacja-frontend:1h
+    - name: acs-central-endpoint
+      type: string
+      default: central-stackrox.apps.ap-cluster1.apps.ocp.redhat.lab:443
+    - name: manifest-dir
+      type: string
+      default: k8s
+    - name: target-namespace
+      type: string
+      default: aplikacja
+  workspaces:
+    - name: source
+    - name: shared-data
+  tasks:
+    # STEP 1: Clone repo
+    - name: git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.git-revision)
+      workspaces:
+        - name: output
+          workspace: source
+
+    # STEP 2: Image check (PASS/FAIL - blocks pipeline)
+    - name: image-check
+      runAfter:
+        - git-clone
+      taskRef:
+        name: roxctl-image-check
+      params:
+        - name: image
+          value: $(params.image)
+        - name: acs-central-endpoint
+          value: $(params.acs-central-endpoint)
+
+    # STEP 3: Image scan (informational - runs in parallel with image-check)
+    - name: image-scan
+      runAfter:
+        - git-clone
+      taskRef:
+        name: roxctl-image-scan
+      params:
+        - name: image
+          value: $(params.image)
+        - name: acs-central-endpoint
+          value: $(params.acs-central-endpoint)
+      workspaces:
+        - name: shared-data
+          workspace: shared-data
+
+    # STEP 4: Deployment check (PASS/FAIL - blocks pipeline)
+    - name: deployment-check
+      runAfter:
+        - image-check
+      taskRef:
+        name: roxctl-deployment-check
+      params:
+        - name: manifest-dir
+          value: $(params.manifest-dir)
+        - name: acs-central-endpoint
+          value: $(params.acs-central-endpoint)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # STEP 5: Check/generate NetworkPolicy
+    - name: check-netpol
+      runAfter:
+        - deployment-check
+      taskRef:
+        name: check-netpol
+      params:
+        - name: manifest-dir
+          value: $(params.manifest-dir)
+        - name: git-url
+          value: $(params.git-url)
+      workspaces:
+        - name: source
+          workspace: source
+
+    # STEP 6: Deploy (only if netpol EXISTS)
+    - name: deploy
+      runAfter:
+        - check-netpol
+        - image-scan
+      when:
+        - input: $(tasks.check-netpol.results.netpol-status)
+          operator: in
+          values:
+            - "EXISTS"
+      taskRef:
+        name: deploy-app
+      params:
+        - name: manifest-dir
+          value: $(params.manifest-dir)
+        - name: namespace
+          value: $(params.target-namespace)
+      workspaces:
+        - name: source
+          workspace: source

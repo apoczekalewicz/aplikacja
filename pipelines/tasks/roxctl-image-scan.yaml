@@ -1,0 +1,56 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: roxctl-image-scan
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: image
+      type: string
+    - name: acs-central-endpoint
+      type: string
+    - name: insecure
+      type: string
+      default: "true"
+  workspaces:
+    - name: shared-data
+  steps:
+    - name: image-scan
+      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: acs-api-token
+              key: token
+      script: |
+        #!/bin/bash
+        set -e
+        echo "=== Installing roxctl ==="
+        curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
+        chmod +x /usr/local/bin/roxctl
+
+        INSECURE_FLAG=""
+        if [ "$(params.insecure)" = "true" ]; then
+          INSECURE_FLAG="--insecure-skip-tls-verify"
+        fi
+
+        echo "=== Scanning image: $(params.image) ==="
+        roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image scan \
+          --image "$(params.image)" \
+          --output json > $(workspaces.shared-data.path)/image-scan-results.json || true
+
+        echo "=== Scan summary ==="
+        cat $(workspaces.shared-data.path)/image-scan-results.json | \
+          python3 -c "
+        import json, sys
+        try:
+          d = json.load(sys.stdin)
+          components = d.get('result',{}).get('scan',{}).get('components',[])
+          vulns = sum(len(c.get('vulns',[])) for c in components)
+          print(f'Components: {len(components)}')
+          print(f'Vulnerabilities: {vulns}')
+        except:
+          print('Could not parse scan results')
+        " || true
+        echo "=== Image scan complete (informational) ==="
