@@ -9,7 +9,6 @@ spec:
       type: string
   workspaces:
     - name: source
-    - name: shared-data
   steps:
     - name: generate-sbom
       image: anchore/syft:latest
@@ -17,7 +16,6 @@ spec:
         #!/bin/sh
         set -e
         echo "=== Generating SBOM for $(params.image) ==="
-        syft registry:$(params.image) -o spdx-json > $(workspaces.shared-data.path)/sbom.spdx.json
+        syft registry:$(params.image) -o spdx-json > $(workspaces.source.path)/sbom.spdx.json
         echo "=== SBOM generated ==="
-        echo "SBOM size: $(wc -c < $(workspaces.shared-data.path)/sbom.spdx.json) bytes"
-        echo "Package count: $(cat $(workspaces.shared-data.path)/sbom.spdx.json | grep -c '"SPDX"' || echo 'N/A')"
+        echo "SBOM size: $(wc -c < $(workspaces.source.path)/sbom.spdx.json) bytes"

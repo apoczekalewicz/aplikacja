@@ -8,14 +8,14 @@ spec:
     - name: image
       type: string
   workspaces:
-    - name: shared-data
+    - name: source
   steps:
     - name: push-sbom
       image: bitnami/cosign:latest
       script: |
         #!/bin/sh
         set -e
-        SBOM_FILE=$(workspaces.shared-data.path)/sbom.spdx.json
+        SBOM_FILE=$(workspaces.source.path)/sbom.spdx.json
         echo "=== Attaching SBOM to $(params.image) ==="
         cosign attach sbom --sbom "${SBOM_FILE}" --type spdx "$(params.image)" --allow-http-registry --allow-insecure-registry
         echo "=== SBOM attached to image ==="

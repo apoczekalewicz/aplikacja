@@ -13,7 +13,7 @@ spec:
       type: string
       default: "true"
   workspaces:
-    - name: shared-data
+    - name: source
   steps:
     - name: image-scan
       image: registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -38,10 +38,10 @@ spec:
         echo "=== Scanning image: $(params.image) ==="
         roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image scan \
           --image "$(params.image)" \
-          --output json > $(workspaces.shared-data.path)/image-scan-results.json || true
+          --output json > $(workspaces.source.path)/image-scan-results.json || true
 
         echo "=== Scan summary ==="
-        cat $(workspaces.shared-data.path)/image-scan-results.json | \
+        cat $(workspaces.source.path)/image-scan-results.json | \
           python3 -c "
         import json, sys
         try:

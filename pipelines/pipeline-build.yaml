@@ -19,7 +19,6 @@ spec:
       default: "1h"
   workspaces:
     - name: source
-    - name: shared-data
   tasks:
     - name: git-clone
       taskRef:
@@ -76,8 +75,6 @@ spec:
       workspaces:
         - name: source
           workspace: source
-        - name: shared-data
-          workspace: shared-data
 
     - name: push-sbom
       runAfter:
@@ -88,5 +85,5 @@ spec:
         - name: image
           value: $(params.image):$(params.image-tag)
       workspaces:
-        - name: shared-data
-          workspace: shared-data
+        - name: source
+          workspace: source
