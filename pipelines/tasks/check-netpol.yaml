@@ -34,7 +34,7 @@ spec:
         #!/bin/bash
         set -e
 
-        dnf install -y git tar gzip jq > /dev/null 2>&1
+        dnf install -y git jq > /dev/null 2>&1
 
         curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
         chmod +x /usr/local/bin/roxctl
@@ -52,7 +52,7 @@ spec:
         fi
 
         echo "=== No NetworkPolicy found. Generating... ==="
-        roxctl netpol generate "${MANIFEST_DIR}" -o "${MANIFEST_DIR}/generated-netpol.yaml" 2>&1 || true
+        roxctl netpol generate "${MANIFEST_DIR}" -f "${MANIFEST_DIR}/generated-netpol.yaml" 2>&1 || true
 
         if [ ! -f "${MANIFEST_DIR}/generated-netpol.yaml" ]; then
           echo "WARNING: roxctl netpol generate did not produce output"
@@ -63,6 +63,7 @@ spec:
         echo "=== Generated NetworkPolicy ==="
         cat "${MANIFEST_DIR}/generated-netpol.yaml"
 
+        echo ""
         echo "=== Pushing to new branch ==="
         cd $(workspaces.source.path)
 
@@ -74,24 +75,25 @@ spec:
         git add $(params.manifest-dir)/generated-netpol.yaml
         git commit -m "Auto-generated NetworkPolicy by CICD pipeline"
 
-        # Push with token auth
         GIT_URL=$(echo "$(params.git-url)" | sed "s|https://|https://pipeline:${GIT_TOKEN}@|")
-        git push "${GIT_URL}" "${BRANCH}"
+        git push "${GIT_URL}" "${BRANCH}" 2>&1
 
         echo "=== Branch ${BRANCH} pushed ==="
-        echo "=== Please create a PR to merge NetworkPolicy ==="
 
         # Create GitHub PR
         REPO_PATH=$(echo "$(params.git-url)" | sed 's|https://github.com/||;s|\.git$||')
-        curl -s -X POST \
+        PR_RESPONSE=$(curl -s -X POST \
           -H "Authorization: token ${GIT_TOKEN}" \
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${REPO_PATH}/pulls" \
           -d "{
             \"title\": \"Auto-generated NetworkPolicy\",
-            \"body\": \"NetworkPolicy wygenerowane automatycznie przez pipeline CICD.\\n\\nPrzejrzyj i zatwierdź.\",
+            \"body\": \"NetworkPolicy wygenerowane automatycznie przez CICD pipeline.\\n\\nPrzejrzyj i zatwierdź.\",
             \"head\": \"${BRANCH}\",
             \"base\": \"main\"
-          }" | jq '.html_url' || echo "PR creation failed - please create manually"
+          }")
+
+        PR_URL=$(echo "$PR_RESPONSE" | jq -r '.html_url // "PR creation failed"')
+        echo "=== PR: ${PR_URL} ==="
 
         echo -n "GENERATED" > $(results.netpol-status.path)

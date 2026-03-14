@@ -26,7 +26,6 @@ spec:
       script: |
         #!/bin/bash
         set -e
-        echo "=== Installing roxctl ==="
         curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
         chmod +x /usr/local/bin/roxctl
 
@@ -37,20 +36,8 @@ spec:
 
         echo "=== Scanning image: $(params.image) ==="
         roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image scan \
-          --image "$(params.image)" \
-          --output json > $(workspaces.source.path)/image-scan-results.json || true
+          --image "$(params.image)" --force \
+          --output table || true
 
-        echo "=== Scan summary ==="
-        cat $(workspaces.source.path)/image-scan-results.json | \
-          python3 -c "
-        import json, sys
-        try:
-          d = json.load(sys.stdin)
-          components = d.get('result',{}).get('scan',{}).get('components',[])
-          vulns = sum(len(c.get('vulns',[])) for c in components)
-          print(f'Components: {len(components)}')
-          print(f'Vulnerabilities: {vulns}')
-        except:
-          print('Could not parse scan results')
-        " || true
+        echo ""
         echo "=== Image scan complete (informational) ==="
