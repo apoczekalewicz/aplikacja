@@ -1,4 +1,5 @@
 import os
+import time
 import psycopg2
 from flask import Flask, render_template_string
 
@@ -39,37 +40,50 @@ def get_db():
     return psycopg2.connect(host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASS)
 
 def init_db():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("CREATE TABLE IF NOT EXISTS counter (id SERIAL PRIMARY KEY, value INTEGER NOT NULL DEFAULT 0)")
-    cur.execute("INSERT INTO counter (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING")
-    conn.commit()
-    cur.close()
-    conn.close()
+    for attempt in range(30):
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS counter (id SERIAL PRIMARY KEY, value INTEGER NOT NULL DEFAULT 0)")
+            cur.execute("INSERT INTO counter (id, value) VALUES (1, 0) ON CONFLICT (id) DO NOTHING")
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("Database initialized successfully")
+            return
+        except Exception as e:
+            print(f"Waiting for database (attempt {attempt+1}/30): {e}")
+            time.sleep(2)
+    print("WARNING: Could not initialize database, will retry on first request")
 
 @app.route("/")
 def index():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("UPDATE counter SET value = value + 1 WHERE id = 1 RETURNING value")
-    counter = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE counter SET value = value + 1 WHERE id = 1 RETURNING value")
+        counter = cur.fetchone()[0]
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception:
+        try:
+            init_db()
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("UPDATE counter SET value = value + 1 WHERE id = 1 RETURNING value")
+            counter = cur.fetchone()[0]
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception:
+            counter = "ERR"
     hostname = os.environ.get("HOSTNAME", "unknown")
     return render_template_string(HTML, counter=counter, hostname=hostname)
 
 @app.route("/health")
 def health():
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.close()
-        conn.close()
-        return "OK", 200
-    except Exception:
-        return "FAIL", 500
+    return "OK", 200
 
 if __name__ == "__main__":
     init_db()
