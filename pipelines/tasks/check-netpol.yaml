@@ -60,9 +60,31 @@ spec:
           exit 1
         fi
 
-        # Post-process: add TCP:53 next to every UDP:53 rule
-        echo "=== Post-processing: adding TCP:53 to DNS egress rules ==="
-        sed -i '/- port: 53/{N;s/protocol: UDP/protocol: UDP\n    - port: 53\n      protocol: TCP/}' "${MANIFEST_DIR}/generated-netpol.yaml"
+        # Detect namespace from manifests
+        NS=$(grep -h "namespace:" ${MANIFEST_DIR}/*deployment*.yaml 2>/dev/null | head -1 | awk '{print $2}')
+        NS=${NS:-default}
+
+        # Append allow-dns NetworkPolicy (OpenShift OVN needs explicit DNS egress)
+        echo "=== Adding allow-dns NetworkPolicy for namespace ${NS} ==="
+        printf '\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf -- '---\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf 'apiVersion: networking.k8s.io/v1\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf 'kind: NetworkPolicy\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf 'metadata:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '  name: allow-dns\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '  namespace: %s\n' "${NS}" >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf 'spec:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '  podSelector: {}\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '  policyTypes:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '    - Egress\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '  egress:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '    - ports:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '        - port: 53\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '          protocol: UDP\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '        - port: 53\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '          protocol: TCP\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '      to:\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
+        printf '        - namespaceSelector: {}\n' >> "${MANIFEST_DIR}/generated-netpol.yaml"
 
         echo "=== Generated NetworkPolicy ==="
         cat "${MANIFEST_DIR}/generated-netpol.yaml"
@@ -92,8 +114,8 @@ spec:
           -H "Accept: application/vnd.github.v3+json" \
           "https://api.github.com/repos/${REPO_PATH}/pulls" \
           -d "{
-            \"title\": \"Auto-generated NetworkPolicy (with TCP+UDP DNS)\",
-            \"body\": \"NetworkPolicy wygenerowane automatycznie przez CICD pipeline.\\n\\nZmiany vs roxctl default:\\n- Dodano TCP:53 obok UDP:53 dla kompatybilności z OVN/glibc\\n\\nPrzejrzyj i zatwierdź.\",
+            \"title\": \"Auto-generated NetworkPolicy (with DNS allow)\",
+            \"body\": \"NetworkPolicy wygenerowane automatycznie przez CICD pipeline.\\n\\n- Wygenerowane przez roxctl netpol generate\\n- Dodano allow-dns (UDP+TCP:53) dla kompatybilności z OVN\\n\\nPrzejrzyj i zatwierdź.\",
             \"head\": \"${BRANCH}\",
             \"base\": \"main\"
           }")
