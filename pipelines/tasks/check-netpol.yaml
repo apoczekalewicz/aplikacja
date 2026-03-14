@@ -34,7 +34,7 @@ spec:
         #!/bin/bash
         set -e
 
-        dnf install -y git jq > /dev/null 2>&1
+        dnf install -y git jq python3-pyyaml > /dev/null 2>&1
 
         curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
         chmod +x /usr/local/bin/roxctl
@@ -59,6 +59,38 @@ spec:
           echo -n "FAILED" > $(results.netpol-status.path)
           exit 1
         fi
+
+        # Post-process: add TCP:53 next to every UDP:53 rule (OVN/glibc needs both)
+        echo "=== Post-processing: adding TCP:53 to DNS egress rules ==="
+        python3 << 'PYEOF'
+        import yaml
+        import sys
+
+        with open("${MANIFEST_DIR}/generated-netpol.yaml", "r") as f:
+            content = f.read()
+
+        docs = list(yaml.safe_load_all(content))
+        modified = False
+
+        for doc in docs:
+            if not doc or doc.get("kind") != "NetworkPolicy":
+                continue
+            for rule in doc.get("spec", {}).get("egress", []):
+                ports = rule.get("ports", [])
+                has_udp53 = any(p.get("port") == 53 and p.get("protocol") == "UDP" for p in ports)
+                has_tcp53 = any(p.get("port") == 53 and p.get("protocol") == "TCP" for p in ports)
+                if has_udp53 and not has_tcp53:
+                    ports.append({"port": 53, "protocol": "TCP"})
+                    modified = True
+
+        if modified:
+            print("Added TCP:53 to DNS egress rules")
+        else:
+            print("No DNS rules to modify")
+
+        with open("${MANIFEST_DIR}/generated-netpol.yaml", "w") as f:
+            yaml.dump_all(docs, f, default_flow_style=False)
+        PYEOF
 
         echo "=== Generated NetworkPolicy ==="
         cat "${MANIFEST_DIR}/generated-netpol.yaml"
@@ -89,7 +121,7 @@ spec:
           "https://api.github.com/repos/${REPO_PATH}/pulls" \
           -d "{
             \"title\": \"Auto-generated NetworkPolicy\",
-            \"body\": \"NetworkPolicy wygenerowane automatycznie przez CICD pipeline.\\n\\nPrzejrzyj i zatwierdź.\",
+            \"body\": \"NetworkPolicy wygenerowane automatycznie przez CICD pipeline.\\n\\nZmiany:\\n- Dodano TCP:53 obok UDP:53 dla kompatybilności z OVN/glibc\\n\\nPrzejrzyj i zatwierdź.\",
             \"head\": \"${BRANCH}\",
             \"base\": \"main\"
           }")
