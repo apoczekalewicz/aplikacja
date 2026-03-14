@@ -13,7 +13,7 @@ spec:
       default: main
     - name: image
       type: string
-      default: quay.io/apoczeka/aplikacja-frontend:latest
+      default: quay.io/apoczeka/aplikacja:latest
     - name: acs-central-endpoint
       type: string
       default: central-stackrox.apps.ap-cluster1.apps.ocp.redhat.lab:443

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: quay.io/apoczeka/aplikacja-frontend:latest
+          image: quay.io/apoczeka/aplikacja:latest
           ports:
             - containerPort: 8080
               protocol: TCP
