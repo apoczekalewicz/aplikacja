@@ -34,7 +34,7 @@ spec:
         #!/bin/bash
         set -e
 
-        microdnf install -y git tar gzip jq > /dev/null 2>&1
+        dnf install -y git tar gzip jq > /dev/null 2>&1
 
         curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
         chmod +x /usr/local/bin/roxctl
