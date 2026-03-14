@@ -14,7 +14,7 @@ spec:
       default: "true"
   steps:
     - name: image-check
-      image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+      image: registry.access.redhat.com/ubi9/ubi:latest
       env:
         - name: ROX_API_TOKEN
           valueFrom:
