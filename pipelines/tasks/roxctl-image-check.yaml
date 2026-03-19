@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: roxctl-image-check
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: image
+      type: string
+    - name: acs-central-endpoint
+      type: string
+    - name: insecure
+      type: string
+      default: "true"
+  steps:
+    - name: image-check
+      image: registry.access.redhat.com/ubi9/ubi:latest
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: acs-api-token
+              key: token
+      script: |
+        #!/bin/bash
+        set -e
+        curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
+        chmod +x /usr/local/bin/roxctl
+
+        INSECURE_FLAG=""
+        if [ "$(params.insecure)" = "true" ]; then
+          INSECURE_FLAG="--insecure-skip-tls-verify"
+        fi
+
+        echo "=== Checking image against ACS policies: $(params.image) ==="
+        set +e
+        roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image check \
+          --image "$(params.image)" \
+          --output table
+        EXIT_CODE=$?
+        set -e
+
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo ""
+          echo "=== WARNING: Image policy violations found (non-blocking for demo) ==="
+          echo "=== In production, this would STOP the pipeline ==="
+        else
+          echo "=== Image check PASSED - no policy violations ==="
+        fi

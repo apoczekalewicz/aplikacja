@@ -1,0 +1,8 @@
+flask==2.3.3
+psycopg2-binary==2.9.10
+gunicorn==23.0.0
+requests==2.25.1
+urllib3==1.26.5
+cryptography==3.3.2
+setuptools==65.5.1
+Werkzeug==2.3.7

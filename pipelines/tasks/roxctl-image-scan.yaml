@@ -1,0 +1,43 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: roxctl-image-scan
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: image
+      type: string
+    - name: acs-central-endpoint
+      type: string
+    - name: insecure
+      type: string
+      default: "true"
+  workspaces:
+    - name: source
+  steps:
+    - name: image-scan
+      image: registry.access.redhat.com/ubi9/ubi:latest
+      env:
+        - name: ROX_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: acs-api-token
+              key: token
+      script: |
+        #!/bin/bash
+        set -e
+        curl -sL -o /usr/local/bin/roxctl https://mirror.openshift.com/pub/rhacs/assets/4.10.0/bin/Linux/roxctl
+        chmod +x /usr/local/bin/roxctl
+
+        INSECURE_FLAG=""
+        if [ "$(params.insecure)" = "true" ]; then
+          INSECURE_FLAG="--insecure-skip-tls-verify"
+        fi
+
+        echo "=== Scanning image: $(params.image) ==="
+        roxctl -e "$(params.acs-central-endpoint)" $INSECURE_FLAG image scan \
+          --image "$(params.image)" --force \
+          --output table || true
+
+        echo ""
+        echo "=== Image scan complete (informational) ==="

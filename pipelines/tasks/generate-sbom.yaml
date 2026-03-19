@@ -1,0 +1,23 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: generate-sbom
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: image
+      type: string
+  workspaces:
+    - name: source
+  steps:
+    - name: generate-sbom
+      image: registry.access.redhat.com/ubi9/ubi:latest
+      script: |
+        #!/bin/bash
+        set -e
+        echo "=== Installing syft ==="
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | bash -s -- -b /usr/local/bin
+        echo "=== Generating SBOM for $(params.image) ==="
+        syft registry:$(params.image) -o spdx-json > $(workspaces.source.path)/sbom.spdx.json
+        echo "=== SBOM generated ==="
+        ls -lh $(workspaces.source.path)/sbom.spdx.json

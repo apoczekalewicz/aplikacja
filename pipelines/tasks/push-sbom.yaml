@@ -1,0 +1,25 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: push-sbom
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: image
+      type: string
+  workspaces:
+    - name: source
+  steps:
+    - name: push-sbom
+      image: registry.access.redhat.com/ubi9/ubi:latest
+      script: |
+        #!/bin/bash
+        set -e
+        echo "=== Installing cosign ==="
+        curl -sL -o /usr/local/bin/cosign https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+        chmod +x /usr/local/bin/cosign
+
+        SBOM_FILE=$(workspaces.source.path)/sbom.spdx.json
+        echo "=== Attaching SBOM to $(params.image) ==="
+        cosign attach sbom --sbom "${SBOM_FILE}" --type spdx "$(params.image)" --allow-http-registry --allow-insecure-registry
+        echo "=== SBOM attached to image ==="

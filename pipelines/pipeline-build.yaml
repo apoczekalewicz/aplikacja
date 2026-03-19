@@ -1,0 +1,89 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: aplikacja-build
+  namespace: aplikacja-cicd
+spec:
+  params:
+    - name: git-url
+      type: string
+      default: https://github.com/apoczekalewicz/aplikacja.git
+    - name: git-revision
+      type: string
+      default: main
+    - name: image
+      type: string
+      default: quay.io/apoczeka/aplikacja
+    - name: image-tag
+      type: string
+      default: "latest"
+  workspaces:
+    - name: source
+  tasks:
+    - name: git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: git-clone
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: URL
+          value: $(params.git-url)
+        - name: REVISION
+          value: $(params.git-revision)
+      workspaces:
+        - name: output
+          workspace: source
+
+    - name: build-image
+      runAfter:
+        - git-clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: buildah
+          - name: namespace
+            value: openshift-pipelines
+      params:
+        - name: IMAGE
+          value: $(params.image):$(params.image-tag)
+        - name: DOCKERFILE
+          value: ./frontend/Dockerfile
+        - name: CONTEXT
+          value: ./frontend
+        - name: TLS_VERIFY
+          value: "false"
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: generate-sbom
+      runAfter:
+        - build-image
+      taskRef:
+        name: generate-sbom
+      params:
+        - name: image
+          value: $(params.image):$(params.image-tag)
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: push-sbom
+      runAfter:
+        - generate-sbom
+      taskRef:
+        name: push-sbom
+      params:
+        - name: image
+          value: $(params.image):$(params.image-tag)
+      workspaces:
+        - name: source
+          workspace: source
